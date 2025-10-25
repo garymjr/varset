@@ -6,7 +6,7 @@ export interface EnvVars {
   [key: string]: string;
 }
 
-function parseEnvFile(content: string): EnvVars {
+export function parseEnvFile(content: string): EnvVars {
   const vars: EnvVars = {};
   const lines = content.split("\n");
 

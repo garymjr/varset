@@ -3,6 +3,7 @@ import { handleDeny } from "./src/commands/deny";
 import { handleEdit } from "./src/commands/edit";
 import { handleExec } from "./src/commands/exec";
 import { handleHook } from "./src/commands/hook";
+import { handleImport } from "./src/commands/import";
 import { handlePrune } from "./src/commands/prune";
 import { handleReload } from "./src/commands/reload";
 import { handleVersion } from "./src/commands/version";
@@ -28,6 +29,9 @@ async function main() {
         break;
       case "hook":
         await handleHook(args.slice(1));
+        break;
+      case "import":
+        await handleImport(args.slice(1));
         break;
       case "prune":
         await handlePrune();

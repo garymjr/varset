@@ -11,6 +11,7 @@ COMMANDS:
   edit [PATH]        Open .envrc in $EDITOR (defaults to ./.envrc)
   exec DIR COMMAND   Execute command after loading .envrc from DIR
   hook SHELL         Output shell hook (bash, zsh, or fish)
+  import SOURCE [TARGET]  Import variables from .env.* file to .envrc (defaults to ./.envrc)
   prune              Remove stale entries from permission list
   reload             Output export statements for current env
   version            Show varset version
@@ -20,6 +21,7 @@ EXAMPLES:
   varset allow /path/to/.envrc
   varset edit
   varset exec . npm start
+  varset import .env.local
   eval "$(varset reload)"
   eval "$(varset hook bash)" >> ~/.bashrc
   `.trim());
