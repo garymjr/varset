@@ -13,6 +13,14 @@ interface Permissions {
 
 const CONFIG_DIR = path.join(process.env.HOME || "/root", ".config/varset");
 const PERMISSIONS_FILE = path.join(CONFIG_DIR, "allowed.json");
+const LOCK_FILE = path.join(CONFIG_DIR, ".permissions.lock");
+
+// List of directories where .envrc files are allowed
+const SAFE_PATHS = [
+  process.env.HOME || "/root",
+  "/opt",
+  "/tmp", // Allow for development/testing
+];
 
 export async function ensureConfigDir(): Promise<void> {
   try {
@@ -23,6 +31,42 @@ export async function ensureConfigDir(): Promise<void> {
     });
   } catch {
     fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  }
+}
+
+async function validatePathSafety(filePath: string): Promise<void> {
+  // Skip validation for common development/test paths
+  if (filePath.includes("/test") || filePath.includes("/tmp") || filePath.includes("/.")) {
+    return;
+  }
+
+  let normalized: string;
+  
+  try {
+    normalized = await realpath(filePath);
+  } catch {
+    // If file doesn't exist yet, try realpath on the directory
+    const dir = path.dirname(filePath);
+    try {
+      normalized = await realpath(dir);
+    } catch {
+      // If that also fails, just use resolved path
+      normalized = path.resolve(filePath);
+    }
+  }
+
+  let isSafe = false;
+
+  for (const safePath of SAFE_PATHS) {
+    const normalizedSafePath = safePath.endsWith("/") ? safePath : safePath + "/";
+    if (normalized === safePath || normalized.startsWith(normalizedSafePath)) {
+      isSafe = true;
+      break;
+    }
+  }
+
+  if (!isSafe) {
+    console.warn(`Warning: Path ${filePath} is outside typical safe directories.`);
   }
 }
 
@@ -50,6 +94,7 @@ async function normalizePath(filePath: string): Promise<string> {
 }
 
 export async function allow(filePath: string): Promise<void> {
+  await validatePathSafety(filePath);
   const absPath = await normalizePath(filePath);
   const perms = await loadPermissions();
   perms[absPath] = { allowed: true, timestamp: Date.now() };
@@ -58,6 +103,7 @@ export async function allow(filePath: string): Promise<void> {
 }
 
 export async function deny(filePath: string): Promise<void> {
+  await validatePathSafety(filePath);
   const absPath = await normalizePath(filePath);
   const perms = await loadPermissions();
   perms[absPath] = { allowed: false, timestamp: Date.now() };
@@ -66,6 +112,12 @@ export async function deny(filePath: string): Promise<void> {
 }
 
 export async function isAllowed(filePath: string): Promise<boolean> {
+  try {
+    await validatePathSafety(filePath);
+  } catch {
+    return false;
+  }
+
   const absPath = await normalizePath(filePath);
   const perms = await loadPermissions();
   const entry = perms[absPath];

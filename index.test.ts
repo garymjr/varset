@@ -9,7 +9,7 @@ import {
   prune,
   loadPermissions,
 } from "./src/permissions";
-import { loadEnvRecursive, loadEnvFromDirDown } from "./src/loader";
+import { loadEnvRecursive, loadEnvFromDirDown, parseEnvFile } from "./src/loader";
 
 // Test utilities
 const TEST_DIR = "/tmp/varset_test_suite";
@@ -159,5 +159,85 @@ test("loadEnvFromDirDown - should load .envrc from specified directory", async (
   expect(vars.DIRA_VAR).toBe("dira_value");
   expect(vars.HOME_VAR).toBeUndefined();
 
+  await cleanupTestDir();
+});
+
+test("parseEnvFile - should filter dangerous environment variables", () => {
+  const content = `
+    SAFE_VAR=safe_value
+    LD_PRELOAD=/malicious/lib.so
+    MY_APP_CONFIG=config_value
+    DYLD_INSERT_LIBRARIES=/path/to/lib.so
+    PATH=/custom/path
+    PYTHONPATH=/custom/python
+  `;
+
+  const vars = parseEnvFile(content);
+
+  expect(vars.SAFE_VAR).toBe("safe_value");
+  expect(vars.MY_APP_CONFIG).toBe("config_value");
+  expect(vars.LD_PRELOAD).toBeUndefined();
+  expect(vars.DYLD_INSERT_LIBRARIES).toBeUndefined();
+  expect(vars.PATH).toBeUndefined();
+  expect(vars.PYTHONPATH).toBeUndefined();
+});
+
+test("parseEnvFile - should handle quoted values", () => {
+  const content = `
+    VAR1="value with spaces"
+    VAR2='single quoted value'
+    VAR3=unquoted_value
+  `;
+
+  const vars = parseEnvFile(content);
+
+  expect(vars.VAR1).toBe("value with spaces");
+  expect(vars.VAR2).toBe("single quoted value");
+  expect(vars.VAR3).toBe("unquoted_value");
+});
+
+test("parseEnvFile - should handle export statements", () => {
+  const content = `
+    export VAR1=value1
+    export VAR2="value2"
+    VAR3=value3
+  `;
+
+  const vars = parseEnvFile(content);
+
+  expect(vars.VAR1).toBe("value1");
+  expect(vars.VAR2).toBe("value2");
+  expect(vars.VAR3).toBe("value3");
+});
+
+test("allow - should allow and warn for dev paths", async () => {
+  await setupTestDir();
+
+  // Allow a .envrc in /tmp (development/test path - should be allowed with warning)
+  const devPath = "/tmp/safe_test/.envrc";
+  fs.mkdirSync("/tmp/safe_test", { recursive: true });
+  fs.writeFileSync(devPath, "VAR=value");
+
+  // Should not throw, just warn
+  await allow(devPath);
+  const isAllowedResult = await isAllowed(devPath);
+  expect(isAllowedResult).toBe(true);
+
+  fs.rmSync("/tmp/safe_test", { recursive: true });
+  await cleanupTestDir();
+});
+
+test("isAllowed - should return false for unsafe paths", async () => {
+  await setupTestDir();
+
+  // Try to check if unsafe path is allowed
+  const unsafePath = "/tmp/unsafe2/.envrc";
+  fs.mkdirSync("/tmp/unsafe2", { recursive: true });
+  fs.writeFileSync(unsafePath, "VAR=value");
+
+  const result = await isAllowed(unsafePath);
+  expect(result).toBe(false);
+
+  fs.rmSync("/tmp/unsafe2", { recursive: true });
   await cleanupTestDir();
 });

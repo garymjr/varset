@@ -1,14 +1,30 @@
 import * as path from "path";
-import { realpath } from "fs/promises";
+import { realpath, stat } from "fs/promises";
 import { isAllowed } from "./permissions";
 
 export interface EnvVars {
   [key: string]: string;
 }
 
-export function parseEnvFile(content: string): EnvVars {
+// Environment variables that could be abused for code injection/hijacking
+const DANGEROUS_ENV_VARS = new Set([
+  "LD_PRELOAD",
+  "LD_LIBRARY_PATH",
+  "LD_AUDIT",
+  "DYLD_INSERT_LIBRARIES",
+  "DYLD_LIBRARY_PATH",
+  "DYLD_PRELOAD",
+  "ASAN_PRELOAD",
+  "UBSAN_PRELOAD",
+  "PATH",
+  "PYTHONPATH",
+  "RUBYLIB",
+]);
+
+export function parseEnvFile(content: string, filePath?: string): EnvVars {
   const vars: EnvVars = {};
   const lines = content.split("\n");
+  const dangerous: string[] = [];
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -36,8 +52,16 @@ export function parseEnvFile(content: string): EnvVars {
     }
 
     if (key && /^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
-      vars[key] = value;
+      if (DANGEROUS_ENV_VARS.has(key)) {
+        dangerous.push(key);
+      } else {
+        vars[key] = value;
+      }
     }
+  }
+
+  if (dangerous.length > 0) {
+    console.warn(`⚠ Warning: .envrc at ${filePath || "unknown"} contains restricted variables and they were ignored: ${dangerous.join(", ")}`);
   }
 
   return vars;
@@ -58,7 +82,7 @@ async function loadEnvFromDir(dirPath: string): Promise<EnvVars> {
     }
 
     const content = await Bun.file(envrcPath).text();
-    return parseEnvFile(content);
+    return parseEnvFile(content, envrcPath);
   } catch {
     return {};
   }
@@ -75,15 +99,21 @@ export async function loadEnvRecursive(startDir: string): Promise<EnvVars> {
     currentDir = path.resolve(startDir);
   }
 
-  // Collect all directories from current to home
+  // Collect all directories from current to home, tracking inodes to detect symlink loops
   const dirs: string[] = [];
-  const visited = new Set<string>();
+  const visitedInodes = new Set<number>();
 
   while (true) {
-    if (visited.has(currentDir)) {
+    try {
+      const st = await stat(currentDir);
+      if (visitedInodes.has(st.ino)) {
+        break;
+      }
+      visitedInodes.add(st.ino);
+    } catch {
       break;
     }
-    visited.add(currentDir);
+
     dirs.push(currentDir);
 
     if (currentDir === home || currentDir === "/") {
@@ -95,7 +125,11 @@ export async function loadEnvRecursive(startDir: string): Promise<EnvVars> {
       break;
     }
 
-    currentDir = parent;
+    try {
+      currentDir = await realpath(parent);
+    } catch {
+      currentDir = parent;
+    }
   }
 
   // Load from home first (or root), then down to current dir
@@ -118,7 +152,7 @@ export async function loadEnvFromDirDown(startDir: string): Promise<EnvVars> {
       const allowed = await isAllowed(envrcPath);
       if (allowed) {
         const content = await Bun.file(envrcPath).text();
-        const dirVars = parseEnvFile(content);
+        const dirVars = parseEnvFile(content, envrcPath);
         Object.assign(vars, dirVars);
       }
     }

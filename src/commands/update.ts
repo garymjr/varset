@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import * as crypto from "crypto";
 
 const GITHUB_REPO = "garymjr/varset";
 const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
@@ -52,13 +52,16 @@ function getBinaryName(): string {
   throw new Error(`Unsupported operating system: ${os}`);
 }
 
-function getInstallPath(): string {
+async function getInstallPath(): Promise<string> {
   try {
-    const result = execSync("which varset", { encoding: "utf8" }).trim();
-    return result;
+    const proc = Bun.spawnSync(["which", "varset"], { stdout: "pipe" });
+    if (proc.success) {
+      return new TextDecoder().decode(proc.stdout).trim();
+    }
   } catch {
-    return `${process.env.HOME}/.local/bin/varset`;
+    // fallthrough
   }
+  return `${process.env.HOME}/.local/bin/varset`;
 }
 
 async function fetchLatestRelease(): Promise<ReleaseInfo> {
@@ -69,7 +72,7 @@ async function fetchLatestRelease(): Promise<ReleaseInfo> {
   return response.json();
 }
 
-async function downloadBinary(downloadUrl: string, targetPath: string): Promise<void> {
+async function downloadBinary(downloadUrl: string, targetPath: string): Promise<string> {
   const response = await fetch(downloadUrl);
   if (!response.ok) {
     throw new Error(`Failed to download binary: ${response.statusText}`);
@@ -77,27 +80,64 @@ async function downloadBinary(downloadUrl: string, targetPath: string): Promise<
 
   const buffer = await response.arrayBuffer();
   await Bun.write(targetPath, buffer);
+  
+  // Calculate SHA256 checksum
+  const hash = crypto.createHash("sha256");
+  hash.update(Buffer.from(buffer));
+  return hash.digest("hex");
+}
+
+async function fetchChecksums(releaseInfo: ReleaseInfo): Promise<Map<string, string>> {
+  const checksumAsset = releaseInfo.assets.find((a) => a.name === "checksums.txt");
+  if (!checksumAsset) {
+    throw new Error("No checksums.txt found in release assets");
+  }
+
+  const response = await fetch(checksumAsset.browser_download_url);
+  if (!response.ok) {
+    throw new Error(`Failed to download checksums: ${response.statusText}`);
+  }
+
+  const checksumText = await response.text();
+  const checksums = new Map<string, string>();
+  
+  for (const line of checksumText.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed) {
+      const [hash, filename] = trimmed.split(/\s+/);
+      if (hash && filename) {
+        checksums.set(filename.trim(), hash.trim());
+      }
+    }
+  }
+
+  return checksums;
+}
+
+async function verifyBinaryChecksum(binaryPath: string, expectedHash: string): Promise<boolean> {
+  const content = await Bun.file(binaryPath).arrayBuffer();
+  const hash = crypto.createHash("sha256");
+  hash.update(Buffer.from(content));
+  const actualHash = hash.digest("hex");
+  return actualHash === expectedHash;
 }
 
 function promptYesNo(message: string, autoYes: boolean = false): boolean {
   if (autoYes) return true;
 
-  // Use /dev/tty for interactive prompt, fallback to auto-yes if not available
-  try {
-    const proc = Bun.spawnSync(["sh", "-c", "read -p 'Do you want to update? (y/n) ' -n 1 -r response; echo $response"], {
-      stdin: "inherit",
-      stdout: "pipe",
-      stderr: "inherit",
-    });
-    const response = new TextDecoder().decode(proc.stdout).trim().toLowerCase();
-    return response === "y";
-  } catch {
-    return false;
-  }
+  process.stdout.write(message || "Do you want to update? (y/n) ");
+  const proc = Bun.spawnSync(["sh", "-c", "head -c1"], {
+    stdin: "inherit",
+    stdout: "pipe",
+  });
+  const response = new TextDecoder().decode(proc.stdout).trim().toLowerCase();
+  console.log();
+  return response === "y";
 }
 
 export async function handleUpdate(args: string[]): Promise<void> {
   const autoYes = args.includes("--yes");
+  const skipVerify = args.includes("--skip-verify");
 
   try {
     const pkg = await import("../../package.json");
@@ -125,7 +165,7 @@ export async function handleUpdate(args: string[]): Promise<void> {
     console.log(`Release: ${releaseInfo.html_url}`);
 
     if (!autoYes) {
-      const shouldUpdate = promptYesNo("");
+      const shouldUpdate = promptYesNo("Do you want to update? (y/n) ");
       if (!shouldUpdate) {
         console.log("Update cancelled");
         return;
@@ -143,35 +183,64 @@ export async function handleUpdate(args: string[]): Promise<void> {
     const tempDir = await Bun.tempdir();
     const tempBinary = `${tempDir}/varset-new`;
 
-    await downloadBinary(asset.browser_download_url, tempBinary);
+    const downloadedHash = await downloadBinary(asset.browser_download_url, tempBinary);
 
-    // Make binary executable
-    execSync(`chmod +x "${tempBinary}"`);
+    // Verify checksum
+    if (!skipVerify) {
+      console.log("Verifying checksum...");
+      const checksums = await fetchChecksums(releaseInfo);
+      const expectedHash = checksums.get(binaryName);
+      
+      if (!expectedHash) {
+        throw new Error(`No checksum found for ${binaryName}`);
+      }
 
-    const installPath = getInstallPath();
+      const isValid = await verifyBinaryChecksum(tempBinary, expectedHash);
+      if (!isValid) {
+        throw new Error("Checksum verification failed. Binary may be corrupted or tampered with.");
+      }
+      console.log("✓ Checksum verified");
+    }
+
+    // Make binary executable using Bun.spawn (safe from command injection)
+    const chmodProc = Bun.spawnSync(["chmod", "+x", tempBinary]);
+    if (!chmodProc.success) {
+      throw new Error("Failed to make binary executable");
+    }
+
+    const installPath = await getInstallPath();
     console.log(`Installing to ${installPath}...`);
 
-    // Create backup
+    // Create backup safely
     const backupPath = `${installPath}.backup`;
     try {
-      execSync(`cp "${installPath}" "${backupPath}"`);
-      console.log(`Backed up current version to ${backupPath}`);
+      const srcFile = Bun.file(installPath);
+      if (await srcFile.exists()) {
+        await srcFile.copyTo(backupPath);
+        console.log(`Backed up current version to ${backupPath}`);
+      }
     } catch {
       // Backup might fail if file doesn't exist, that's okay
     }
 
-    // Replace binary
+    // Replace binary safely
     try {
-      execSync(`cp "${tempBinary}" "${installPath}"`);
+      const tempFile = Bun.file(tempBinary);
+      await tempFile.copyTo(installPath);
     } catch (error) {
       throw new Error(`Failed to install new binary. You may need to use sudo or check permissions.\nError: ${error}`);
     }
 
     // Verify installation
     try {
-      const newVersion = execSync(`"${installPath}" version`, { encoding: "utf8" }).trim();
-      console.log(`\nSuccessfully updated to ${newVersion}!`);
-      console.log(`Backup saved to ${backupPath}`);
+      const versionProc = Bun.spawnSync([installPath, "version"], { stdout: "pipe" });
+      if (versionProc.success) {
+        const newVersion = new TextDecoder().decode(versionProc.stdout).trim();
+        console.log(`\nSuccessfully updated to ${newVersion}!`);
+        console.log(`Backup saved to ${backupPath}`);
+      } else {
+        throw new Error("Version check failed");
+      }
     } catch {
       throw new Error("Installation verification failed. Restoring backup...");
     }
