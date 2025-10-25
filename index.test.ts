@@ -241,3 +241,57 @@ test("isAllowed - should return false for unsafe paths", async () => {
   fs.rmSync("/tmp/unsafe2", { recursive: true });
   await cleanupTestDir();
 });
+
+// Validation tests
+import {
+  validateVariableName,
+  validateVariableValue,
+  validateCommand,
+} from "./src/validation";
+import { ValidationError, SecurityError } from "./src/errors";
+
+test("validateVariableName - should accept valid names", () => {
+  expect(() => validateVariableName("MY_VAR")).not.toThrow();
+  expect(() => validateVariableName("_privateVar")).not.toThrow();
+  expect(() => validateVariableName("var123")).not.toThrow();
+});
+
+test("validateVariableName - should reject invalid names", () => {
+  expect(() => validateVariableName("")).toThrow(ValidationError);
+  expect(() => validateVariableName("123var")).toThrow(ValidationError);
+  expect(() => validateVariableName("my-var")).toThrow(ValidationError);
+  expect(() => validateVariableName("my.var")).toThrow(ValidationError);
+});
+
+test("validateVariableValue - should accept valid values", () => {
+  expect(() => validateVariableValue("simple")).not.toThrow();
+  expect(() => validateVariableValue("with spaces")).not.toThrow();
+  expect(() => validateVariableValue("")).not.toThrow();
+});
+
+test("validateVariableValue - should reject overly long values", () => {
+  const longValue = "x".repeat(100 * 1024 + 1);
+  expect(() => validateVariableValue(longValue)).toThrow(ValidationError);
+});
+
+test("validateCommand - should accept valid commands", () => {
+  expect(() => validateCommand("bash")).not.toThrow();
+  expect(() => validateCommand("npm start")).not.toThrow();
+  expect(() => validateCommand("python3 script.py")).not.toThrow();
+});
+
+test("validateCommand - should reject empty commands", () => {
+  expect(() => validateCommand("")).toThrow(ValidationError);
+});
+
+test("validateCommand - should warn about shell metacharacters", () => {
+  // This should warn but not throw
+  const consoleSpy = console.warn;
+  let warned = false;
+  console.warn = () => {
+    warned = true;
+  };
+  validateCommand("echo $HOME");
+  console.warn = consoleSpy;
+  expect(warned).toBe(true);
+});

@@ -9,6 +9,8 @@ import { handleReload } from "./src/commands/reload";
 import { handleUpdate } from "./src/commands/update";
 import { handleVersion } from "./src/commands/version";
 import { handleHelp } from "./src/commands/help";
+import { AppError, formatError, getExitCode } from "./src/errors";
+import { EXIT_CODE } from "./src/constants";
 
 async function main() {
   const args = Bun.argv.slice(2);
@@ -54,11 +56,13 @@ async function main() {
       default:
         console.error(`Unknown command: ${command}`);
         console.error("Run 'varset help' for usage information");
-        process.exit(1);
+        process.exit(EXIT_CODE.GENERAL_ERROR);
     }
   } catch (error) {
-    console.error("Error:", error instanceof Error ? error.message : String(error));
-    process.exit(1);
+    const message = formatError(error);
+    console.error("Error:", message);
+    const exitCode = getExitCode(error);
+    process.exit(exitCode);
   }
 }
 

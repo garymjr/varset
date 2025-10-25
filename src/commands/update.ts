@@ -1,9 +1,16 @@
 import * as crypto from "crypto";
-
-const GITHUB_REPO = "garymjr/varset";
-const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
-const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 1000;
+import * as path from "path";
+import * as fs from "fs";
+import {
+  GITHUB_REPO,
+  GITHUB_API_URL,
+  MAX_RETRIES,
+  RETRY_DELAY_MS,
+  RATE_LIMIT_CHECK_INTERVAL_MS,
+  MAX_VERSION_CHECKS_PER_HOUR,
+  CONFIG_DIR,
+} from "../constants";
+import { ValidationError } from "../errors";
 
 interface ReleaseInfo {
   tag_name: string;
@@ -12,6 +19,73 @@ interface ReleaseInfo {
     name: string;
     browser_download_url: string;
   }>;
+}
+
+interface UpdateCheckRecord {
+  timestamps: number[];
+}
+
+const UPDATE_CHECK_FILE = path.join(CONFIG_DIR, "update-checks.json");
+
+/**
+ * Load update check history
+ */
+function loadUpdateCheckHistory(): UpdateCheckRecord {
+  try {
+    if (fs.existsSync(UPDATE_CHECK_FILE)) {
+      const content = fs.readFileSync(UPDATE_CHECK_FILE, "utf-8");
+      return JSON.parse(content);
+    }
+  } catch {
+    // If file is corrupted or doesn't exist, start fresh
+  }
+  return { timestamps: [] };
+}
+
+/**
+ * Save update check history
+ */
+function saveUpdateCheckHistory(record: UpdateCheckRecord): void {
+  try {
+    const dir = path.dirname(UPDATE_CHECK_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(UPDATE_CHECK_FILE, JSON.stringify(record, null, 2));
+  } catch {
+    // Silently fail if we can't save
+  }
+}
+
+/**
+ * Check if update check is rate limited
+ */
+function isRateLimited(): boolean {
+  const record = loadUpdateCheckHistory();
+  const now = Date.now();
+  
+  // Remove timestamps older than 1 hour
+  record.timestamps = record.timestamps.filter((ts) => now - ts < RATE_LIMIT_CHECK_INTERVAL_MS);
+  
+  if (record.timestamps.length >= MAX_VERSION_CHECKS_PER_HOUR) {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Record an update check
+ */
+function recordUpdateCheck(): void {
+  const record = loadUpdateCheckHistory();
+  const now = Date.now();
+  
+  // Remove timestamps older than 1 hour
+  record.timestamps = record.timestamps.filter((ts) => now - ts < RATE_LIMIT_CHECK_INTERVAL_MS);
+  
+  record.timestamps.push(now);
+  saveUpdateCheckHistory(record);
 }
 
 function compareVersions(current: string, latest: string): number {
@@ -163,27 +237,35 @@ export async function handleUpdate(args: string[]): Promise<void> {
   const autoYes = args.includes("--yes");
   const skipVerify = args.includes("--skip-verify");
 
-  try {
-    const pkg = await import("../../package.json");
-    const currentVersion = pkg.version || "0.1.0";
+  // Check rate limiting
+  if (isRateLimited()) {
+    throw new ValidationError(
+      `Too many update checks. Please try again later (max ${MAX_VERSION_CHECKS_PER_HOUR} checks per hour)`
+    );
+  }
 
-    console.log(`Current version: ${currentVersion}`);
-    console.log("Checking for updates...");
+  const pkg = await import("../../package.json");
+  const currentVersion = pkg.version || "0.1.0";
 
-    const releaseInfo = await fetchLatestRelease();
-    const latestVersion = releaseInfo.tag_name.replace(/^v/, "");
+  console.log(`Current version: ${currentVersion}`);
+  console.log("Checking for updates...");
 
-    const comparison = compareVersions(currentVersion, latestVersion);
+  const releaseInfo = await fetchLatestRelease();
+  recordUpdateCheck();
+  
+  const latestVersion = releaseInfo.tag_name.replace(/^v/, "");
 
-    if (comparison === 0) {
-      console.log("You are already on the latest version!");
-      return;
-    }
+  const comparison = compareVersions(currentVersion, latestVersion);
 
-    if (comparison > 0) {
-      console.log(`You are on a newer version (${currentVersion}) than the latest release (${latestVersion})`);
-      return;
-    }
+  if (comparison === 0) {
+    console.log("You are already on the latest version!");
+    return;
+  }
+
+  if (comparison > 0) {
+    console.log(`You are on a newer version (${currentVersion}) than the latest release (${latestVersion})`);
+    return;
+  }
 
     console.log(`\nNew version available: ${latestVersion}`);
     console.log(`Release: ${releaseInfo.html_url}`);
@@ -196,80 +278,84 @@ export async function handleUpdate(args: string[]): Promise<void> {
       }
     }
 
-    const binaryName = getBinaryName();
-    const asset = releaseInfo.assets.find((a) => a.name === binaryName);
+  const binaryName = getBinaryName();
+  const asset = releaseInfo.assets.find((a) => a.name === binaryName);
 
-    if (!asset) {
-      throw new Error(`Binary not found for platform: ${binaryName}\nAvailable assets: ${releaseInfo.assets.map((a) => a.name).join(", ")}`);
+  if (!asset) {
+    throw new ValidationError(
+      `Binary not found for platform: ${binaryName}\n` +
+      `Available assets: ${releaseInfo.assets.map((a) => a.name).join(", ")}`
+    );
+  }
+
+  console.log(`Downloading ${binaryName}...`);
+  const tempDir = await Bun.tempdir();
+  const tempBinary = `${tempDir}/varset-new`;
+
+  const downloadedHash = await downloadBinary(asset.browser_download_url, tempBinary);
+
+  // Verify checksum
+  if (!skipVerify) {
+    console.log("Verifying checksum...");
+    const checksums = await fetchChecksums(releaseInfo);
+    const expectedHash = checksums.get(binaryName);
+    
+    if (!expectedHash) {
+      throw new ValidationError(`No checksum found for ${binaryName}`);
     }
 
-    console.log(`Downloading ${binaryName}...`);
-    const tempDir = await Bun.tempdir();
-    const tempBinary = `${tempDir}/varset-new`;
-
-    const downloadedHash = await downloadBinary(asset.browser_download_url, tempBinary);
-
-    // Verify checksum
-    if (!skipVerify) {
-      console.log("Verifying checksum...");
-      const checksums = await fetchChecksums(releaseInfo);
-      const expectedHash = checksums.get(binaryName);
-      
-      if (!expectedHash) {
-        throw new Error(`No checksum found for ${binaryName}`);
-      }
-
-      const isValid = await verifyBinaryChecksum(tempBinary, expectedHash);
-      if (!isValid) {
-        throw new Error("Checksum verification failed. Binary may be corrupted or tampered with.");
-      }
-      console.log("✓ Checksum verified");
+    const isValid = await verifyBinaryChecksum(tempBinary, expectedHash);
+    if (!isValid) {
+      throw new ValidationError("Checksum verification failed. Binary may be corrupted or tampered with.");
     }
+    console.log("✓ Checksum verified");
+  }
 
-    // Make binary executable using Bun.spawn (safe from command injection)
-    const chmodProc = Bun.spawnSync(["chmod", "+x", tempBinary]);
-    if (!chmodProc.success) {
-      throw new Error("Failed to make binary executable");
+  // Make binary executable using Bun.spawn (safe from command injection)
+  const chmodProc = Bun.spawnSync(["chmod", "+x", tempBinary]);
+  if (!chmodProc.success) {
+    throw new ValidationError("Failed to make binary executable");
+  }
+
+  const installPath = await getInstallPath();
+  console.log(`Installing to ${installPath}...`);
+
+  // Create backup safely
+  const backupPath = `${installPath}.backup`;
+  try {
+    const srcFile = Bun.file(installPath);
+    if (await srcFile.exists()) {
+      await srcFile.copyTo(backupPath);
+      console.log(`Backed up current version to ${backupPath}`);
     }
+  } catch {
+    // Backup might fail if file doesn't exist, that's okay
+  }
 
-    const installPath = await getInstallPath();
-    console.log(`Installing to ${installPath}...`);
+  // Replace binary safely
+  try {
+    const tempFile = Bun.file(tempBinary);
+    await tempFile.copyTo(installPath);
+  } catch (error) {
+    throw new ValidationError(
+      `Failed to install new binary. You may need to use sudo or check permissions.\nError: ${error}`
+    );
+  }
 
-    // Create backup safely
-    const backupPath = `${installPath}.backup`;
-    try {
-      const srcFile = Bun.file(installPath);
-      if (await srcFile.exists()) {
-        await srcFile.copyTo(backupPath);
-        console.log(`Backed up current version to ${backupPath}`);
-      }
-    } catch {
-      // Backup might fail if file doesn't exist, that's okay
-    }
-
-    // Replace binary safely
-    try {
-      const tempFile = Bun.file(tempBinary);
-      await tempFile.copyTo(installPath);
-    } catch (error) {
-      throw new Error(`Failed to install new binary. You may need to use sudo or check permissions.\nError: ${error}`);
-    }
-
-    // Verify installation
-    try {
-      const versionProc = Bun.spawnSync([installPath, "version"], { stdout: "pipe" });
-      if (versionProc.success) {
-        const newVersion = new TextDecoder().decode(versionProc.stdout).trim();
-        console.log(`\nSuccessfully updated to ${newVersion}!`);
-        console.log(`Backup saved to ${backupPath}`);
-      } else {
-        throw new Error("Version check failed");
-      }
-    } catch {
-      throw new Error("Installation verification failed. Restoring backup...");
+  // Verify installation
+  try {
+    const versionProc = Bun.spawnSync([installPath, "version"], { stdout: "pipe" });
+    if (versionProc.success) {
+      const newVersion = new TextDecoder().decode(versionProc.stdout).trim();
+      console.log(`\nSuccessfully updated to ${newVersion}!`);
+      console.log(`Backup saved to ${backupPath}`);
+    } else {
+      throw new ValidationError("Version check failed");
     }
   } catch (error) {
-    console.error("Error:", error instanceof Error ? error.message : String(error));
-    process.exit(1);
+    if (error instanceof ValidationError) {
+      throw error;
+    }
+    throw new ValidationError("Installation verification failed. Restoring backup...");
   }
 }

@@ -1,24 +1,29 @@
 import * as path from "path";
 import * as fs from "fs";
 import { parseEnvFile, EnvVars } from "../loader";
-
-const MAX_FILE_SIZE = 1024 * 1024; // 1 MB
+import { MAX_FILE_SIZE, ENVRC_FILENAME } from "../constants";
+import { ValidationError } from "../errors";
 
 async function safeReadEnvFile(filePath: string, description: string): Promise<string> {
   if (!fs.existsSync(filePath)) {
-    throw new Error(`${description} file not found: ${filePath}`);
+    throw new ValidationError(`${description} file not found: ${filePath}`);
   }
 
   try {
     const file = Bun.file(filePath);
     const fileStats = await file.stat();
     if (fileStats.size > MAX_FILE_SIZE) {
-      throw new Error(`${description} file too large: ${filePath} (${fileStats.size} bytes, max ${MAX_FILE_SIZE} bytes)`);
+      throw new ValidationError(
+        `${description} file too large: ${filePath} (${fileStats.size} bytes, max ${MAX_FILE_SIZE} bytes)`
+      );
     }
     return await file.text();
   } catch (error) {
+    if (error instanceof ValidationError) {
+      throw error;
+    }
     if (error instanceof Error) {
-      throw new Error(`Cannot read ${description} file: ${filePath} (${error.message})`);
+      throw new ValidationError(`Cannot read ${description} file: ${filePath} (${error.message})`);
     }
     throw error;
   }
@@ -26,11 +31,11 @@ async function safeReadEnvFile(filePath: string, description: string): Promise<s
 
 export async function handleImport(args: string[]): Promise<void> {
   if (!args[0]) {
-    throw new Error("Source file required. Usage: varset import <source> [target]");
+    throw new ValidationError("Source file required. Usage: varset import <source> [target]");
   }
 
   const sourceFile = args[0];
-  const targetFile = args[1] || path.join(process.cwd(), ".envrc");
+  const targetFile = args[1] || path.join(process.cwd(), ENVRC_FILENAME);
 
   const sourceContent = await safeReadEnvFile(sourceFile, "Source");
   const sourceVars = parseEnvFile(sourceContent);
