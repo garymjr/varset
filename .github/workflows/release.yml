@@ -31,15 +31,20 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
       - run: |
           mkdir -p release-artifacts
-          mv varset-linux-x64/varset-linux-x64 release-artifacts/
-          mv varset-macos-arm64/varset-macos-arm64 release-artifacts/
+          mv varset-linux-x64/varset-linux-x64 release-artifacts/varset-linux-x64
+          mv varset-macos-arm64/varset-macos-arm64 release-artifacts/varset-macos-arm64
+          chmod +x release-artifacts/*
           ls -la release-artifacts/
       - uses: softprops/action-gh-release@v1
         with:
           files: release-artifacts/*
           generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
