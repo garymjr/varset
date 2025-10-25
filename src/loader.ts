@@ -1,36 +1,28 @@
 import * as path from "path";
 import { realpath, stat } from "fs/promises";
 import { isAllowed } from "./permissions";
+import {
+  MAX_FILE_SIZE,
+  DANGEROUS_ENV_VARS,
+  HOME_DIR,
+  ENVRC_FILENAME,
+} from "./constants";
+import { ValidationError } from "./errors";
 
 export interface EnvVars {
   [key: string]: string;
 }
 
-const MAX_FILE_SIZE = 1024 * 1024; // 1 MB
-
 async function safeReadFile(filePath: string): Promise<string> {
   const file = Bun.file(filePath);
   const fileStats = await file.stat();
   if (fileStats.size > MAX_FILE_SIZE) {
-    throw new Error(`File too large: ${filePath} (${fileStats.size} bytes, max ${MAX_FILE_SIZE} bytes)`);
+    throw new ValidationError(
+      `File too large: ${filePath} (${fileStats.size} bytes, max ${MAX_FILE_SIZE} bytes)`
+    );
   }
   return file.text();
 }
-
-// Environment variables that could be abused for code injection/hijacking
-const DANGEROUS_ENV_VARS = new Set([
-  "LD_PRELOAD",
-  "LD_LIBRARY_PATH",
-  "LD_AUDIT",
-  "DYLD_INSERT_LIBRARIES",
-  "DYLD_LIBRARY_PATH",
-  "DYLD_PRELOAD",
-  "ASAN_PRELOAD",
-  "UBSAN_PRELOAD",
-  "PATH",
-  "PYTHONPATH",
-  "RUBYLIB",
-]);
 
 export function parseEnvFile(content: string, filePath?: string): EnvVars {
   const vars: EnvVars = {};
@@ -79,7 +71,7 @@ export function parseEnvFile(content: string, filePath?: string): EnvVars {
 }
 
 async function loadEnvFromDir(dirPath: string): Promise<EnvVars> {
-  const envrcPath = path.join(dirPath, ".envrc");
+  const envrcPath = path.join(dirPath, ENVRC_FILENAME);
   
   try {
     const exists = await Bun.file(envrcPath).exists();
@@ -101,7 +93,7 @@ async function loadEnvFromDir(dirPath: string): Promise<EnvVars> {
 
 export async function loadEnvRecursive(startDir: string): Promise<EnvVars> {
   const vars: EnvVars = {};
-  const home = process.env.HOME || "/root";
+  const home = HOME_DIR;
   
   let currentDir: string;
   try {
@@ -155,7 +147,7 @@ export async function loadEnvRecursive(startDir: string): Promise<EnvVars> {
 
 export async function loadEnvFromDirDown(startDir: string): Promise<EnvVars> {
   const vars: EnvVars = {};
-  const envrcPath = path.join(startDir, ".envrc");
+  const envrcPath = path.join(startDir, ENVRC_FILENAME);
   
   try {
     const exists = await Bun.file(envrcPath).exists();

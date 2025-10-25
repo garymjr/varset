@@ -1,8 +1,15 @@
 import * as fs from "fs";
 import * as path from "path";
 import { realpath } from "fs/promises";
-
-const MAX_FILE_SIZE = 1024 * 1024; // 1 MB
+import {
+  MAX_FILE_SIZE,
+  MAX_PERMISSIONS_ENTRIES,
+  CONFIG_DIR,
+  PERMISSIONS_FILE_NAME,
+  LOCK_FILE_NAME,
+  SAFE_BASE_PATHS,
+} from "./constants";
+import { ValidationError, SecurityError } from "./errors";
 
 interface PermissionEntry {
   allowed: boolean;
@@ -13,16 +20,8 @@ interface Permissions {
   [key: string]: PermissionEntry;
 }
 
-const CONFIG_DIR = path.join(process.env.HOME || "/root", ".config/varset");
-const PERMISSIONS_FILE = path.join(CONFIG_DIR, "allowed.json");
-const LOCK_FILE = path.join(CONFIG_DIR, ".permissions.lock");
-
-// List of directories where .envrc files are allowed
-const SAFE_PATHS = [
-  process.env.HOME || "/root",
-  "/opt",
-  "/tmp", // Allow for development/testing
-];
+const PERMISSIONS_FILE = path.join(CONFIG_DIR, PERMISSIONS_FILE_NAME);
+const LOCK_FILE = path.join(CONFIG_DIR, LOCK_FILE_NAME);
 
 export async function ensureConfigDir(): Promise<void> {
   try {
@@ -37,6 +36,15 @@ export async function ensureConfigDir(): Promise<void> {
 }
 
 async function validatePathSafety(filePath: string): Promise<void> {
+  if (!filePath || typeof filePath !== "string") {
+    throw new ValidationError("Path must be a non-empty string");
+  }
+
+  // Detect path traversal attempts
+  if (filePath.includes("..")) {
+    throw new SecurityError(`Path traversal attempt detected: ${filePath}`);
+  }
+
   // Skip validation for common development/test paths
   if (filePath.includes("/test") || filePath.includes("/tmp") || filePath.includes("/.")) {
     return;
@@ -59,7 +67,7 @@ async function validatePathSafety(filePath: string): Promise<void> {
 
   let isSafe = false;
 
-  for (const safePath of SAFE_PATHS) {
+  for (const safePath of SAFE_BASE_PATHS) {
     const normalizedSafePath = safePath.endsWith("/") ? safePath : safePath + "/";
     if (normalized === safePath || normalized.startsWith(normalizedSafePath)) {
       isSafe = true;
@@ -78,14 +86,28 @@ export async function loadPermissions(): Promise<Permissions> {
     const file = Bun.file(PERMISSIONS_FILE);
     const fileStats = await file.stat();
     if (fileStats.size > MAX_FILE_SIZE) {
-      throw new Error(`Permissions file too large (${fileStats.size} bytes, max ${MAX_FILE_SIZE} bytes)`);
+      throw new ValidationError(
+        `Permissions file too large (${fileStats.size} bytes, max ${MAX_FILE_SIZE} bytes)`
+      );
     }
     const content = await file.text();
-    return JSON.parse(content);
+    const perms = JSON.parse(content) as Permissions;
+    
+    // Prevent DoS: check entry count
+    if (Object.keys(perms).length > MAX_PERMISSIONS_ENTRIES) {
+      throw new ValidationError(
+        `Too many permission entries (${Object.keys(perms).length} > ${MAX_PERMISSIONS_ENTRIES})`
+      );
+    }
+    
+    return perms;
   } catch (error) {
     if (error instanceof SyntaxError) {
       console.warn("Warning: Corrupted permissions file, starting fresh");
       return {};
+    }
+    if (error instanceof ValidationError) {
+      throw error;
     }
     if (error instanceof Error && error.message.includes("too large")) {
       throw error;

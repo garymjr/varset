@@ -1,4 +1,6 @@
 import { loadEnvFromDirDown } from "../loader";
+import { validateDirectory, validateCommand } from "../validation";
+import { ValidationError, NotFoundError } from "../errors";
 
 async function commandExists(cmd: string): Promise<boolean> {
   try {
@@ -11,18 +13,22 @@ async function commandExists(cmd: string): Promise<boolean> {
 
 export async function handleExec(args: string[]): Promise<void> {
   if (args.length < 2) {
-    console.error("Usage: varset exec <dir> <command> [args...]");
-    process.exit(1);
+    throw new ValidationError("Usage: varset exec <dir> <command> [args...]");
   }
 
   const dir = args[0];
   const cmd = args[1];
   const cmdArgs = args.slice(2);
 
+  // Validate directory
+  await validateDirectory(dir);
+  
+  // Validate command
+  validateCommand(cmd);
+
   // Verify command exists
   if (!(await commandExists(cmd))) {
-    console.error(`Command not found: ${cmd}`);
-    process.exit(127);
+    throw new NotFoundError(`Command not found: ${cmd}`);
   }
 
   const envVars = await loadEnvFromDirDown(dir);

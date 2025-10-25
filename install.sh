@@ -20,8 +20,19 @@ case "$ARCH" in
   arm64|aarch64)
     ARCH_MAPPED="arm64"
     ;;
+  armv7l|armv7)
+    echo -e "${RED}Error: ARMv7 (32-bit ARM) is not supported.${NC}"
+    echo -e "${YELLOW}Please use 64-bit ARM (ARM64/aarch64) or x64.${NC}"
+    exit 1
+    ;;
+  i386|i686)
+    echo -e "${RED}Error: 32-bit x86 (i386/i686) is not supported.${NC}"
+    echo -e "${YELLOW}Please use 64-bit x86 (x64) or ARM64.${NC}"
+    exit 1
+    ;;
   *)
-    echo -e "${RED}Error: Unsupported architecture: $ARCH${NC}"
+    echo -e "${RED}Error: Unsupported or unknown architecture: $ARCH${NC}"
+    echo -e "${YELLOW}Supported architectures: x64, arm64${NC}"
     exit 1
     ;;
 esac
@@ -77,8 +88,11 @@ if [ -z "$DOWNLOAD_URL" ]; then
   exit 1
 fi
 
-# Create temporary directory
-TEMP_DIR=$(mktemp -d)
+# Create temporary directory with error handling
+TEMP_DIR=$(mktemp -d 2>/dev/null) || {
+  echo -e "${RED}Error: Failed to create temporary directory${NC}"
+  exit 1
+}
 trap "rm -rf $TEMP_DIR" EXIT
 
 TEMP_BINARY="$TEMP_DIR/varset"
@@ -87,6 +101,21 @@ TEMP_BINARY="$TEMP_DIR/varset"
 echo -e "${YELLOW}Downloading from: $DOWNLOAD_URL${NC}"
 if ! curl -fsSL -o "$TEMP_BINARY" "$DOWNLOAD_URL"; then
   echo -e "${RED}Error: Failed to download binary${NC}"
+  exit 1
+fi
+
+# Validate downloaded file
+if [ ! -f "$TEMP_BINARY" ]; then
+  echo -e "${RED}Error: Binary file was not created${NC}"
+  exit 1
+fi
+
+BINARY_SIZE=$(stat -f%z "$TEMP_BINARY" 2>/dev/null || stat -c%s "$TEMP_BINARY" 2>/dev/null || echo 0)
+MIN_SIZE=1000000  # ~1MB minimum
+MAX_SIZE=100000000  # ~100MB maximum
+
+if [ "$BINARY_SIZE" -lt "$MIN_SIZE" ] || [ "$BINARY_SIZE" -gt "$MAX_SIZE" ]; then
+  echo -e "${RED}Error: Invalid binary size: $BINARY_SIZE bytes (expected 1MB-100MB)${NC}"
   exit 1
 fi
 
@@ -108,6 +137,11 @@ fi
 
 # Verify installation
 echo -e "${YELLOW}Verifying installation...${NC}"
+if [ ! -x "$INSTALL_PATH" ]; then
+  echo -e "${RED}Error: Binary is not executable at $INSTALL_PATH${NC}"
+  exit 1
+fi
+
 if "$INSTALL_PATH" version &> /dev/null; then
   VERSION=$("$INSTALL_PATH" version 2>/dev/null || echo "unknown")
   echo -e "${GREEN}Successfully installed varset!${NC}"
@@ -119,6 +153,7 @@ if "$INSTALL_PATH" version &> /dev/null; then
   echo "  varset version   - Show version information"
 else
   echo -e "${RED}Error: Installation verification failed${NC}"
-  echo -e "${YELLOW}varset not found or not working properly${NC}"
+  echo -e "${YELLOW}varset binary exists but is not working properly${NC}"
+  echo -e "${YELLOW}Try running: $INSTALL_PATH help${NC}"
   exit 1
 fi
