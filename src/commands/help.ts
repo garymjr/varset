@@ -8,6 +8,7 @@ USAGE:
 COMMANDS:
   allow [PATH]       Grant permission to load .envrc (defaults to ./.envrc)
   deny [PATH]        Revoke permission to load .envrc (defaults to ./.envrc)
+  list, status       Show active .envrc files and their status
   edit [PATH]        Open .envrc in $EDITOR (defaults to ./.envrc)
   exec DIR COMMAND   Execute command after loading .envrc from DIR
   hook SHELL         Output shell hook (bash, zsh, or fish)
@@ -19,6 +20,7 @@ COMMANDS:
   help               Show this help message
 
 EXAMPLES:
+  varset list        Show all tracked .envrc files and their status
   varset allow /path/to/.envrc
   varset edit
   varset exec . npm start

@@ -4,6 +4,7 @@ import { handleEdit } from "./src/commands/edit";
 import { handleExec } from "./src/commands/exec";
 import { handleHook } from "./src/commands/hook";
 import { handleImport } from "./src/commands/import";
+import { handleList } from "./src/commands/list";
 import { handlePrune } from "./src/commands/prune";
 import { handleReload } from "./src/commands/reload";
 import { handleUpdate } from "./src/commands/update";
@@ -35,6 +36,10 @@ async function main() {
         break;
       case "import":
         await handleImport(args.slice(1));
+        break;
+      case "list":
+      case "status":
+        await handleList();
         break;
       case "prune":
         await handlePrune();

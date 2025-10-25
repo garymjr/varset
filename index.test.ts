@@ -295,3 +295,31 @@ test("validateCommand - should warn about shell metacharacters", () => {
   console.warn = consoleSpy;
   expect(warned).toBe(true);
 });
+
+test("list command - should display tracked .envrc files", async () => {
+  await setupTestDir();
+
+  const envrcPath = path.join(TEST_HOME, ".envrc");
+  await allow(envrcPath);
+
+  // Capture console output
+  const logs: string[] = [];
+  const originalLog = console.log;
+  console.log = (...args: any[]) => {
+    logs.push(args.join(" "));
+  };
+
+  // Import and run the list command
+  const { handleList } = await import("./src/commands/list");
+  await handleList();
+
+  console.log = originalLog;
+
+  // Verify output contains expected information
+  const output = logs.join("\n");
+  expect(output).toContain("Active .envrc files");
+  expect(output).toContain("Summary:");
+  expect(output).toContain("variable");
+
+  await cleanupTestDir();
+});

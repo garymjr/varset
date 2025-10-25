@@ -13,7 +13,7 @@ export interface EnvVars {
   [key: string]: string;
 }
 
-async function safeReadFile(filePath: string): Promise<string> {
+export async function safeReadFile(filePath: string): Promise<string> {
   const file = Bun.file(filePath);
   const fileStats = await file.stat();
   if (fileStats.size > MAX_FILE_SIZE) {
