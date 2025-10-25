@@ -13,7 +13,21 @@ A powerful CLI tool for managing environment variables in your project. varset p
 
 ## Installation
 
-To install dependencies:
+### Binary Installation (Recommended)
+
+Install the latest precompiled binary with a single command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/garymjr/varset/main/install.sh | bash
+```
+
+This will automatically download and install the appropriate binary for your platform (Linux x64 or macOS ARM64).
+
+**Alternative:** Download directly from [GitHub Releases](https://github.com/garymjr/varset/releases)
+
+### Development Installation
+
+To install dependencies for development:
 
 ```bash
 bun install
