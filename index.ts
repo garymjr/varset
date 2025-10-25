@@ -6,6 +6,7 @@ import { handleHook } from "./src/commands/hook";
 import { handleImport } from "./src/commands/import";
 import { handlePrune } from "./src/commands/prune";
 import { handleReload } from "./src/commands/reload";
+import { handleUpdate } from "./src/commands/update";
 import { handleVersion } from "./src/commands/version";
 import { handleHelp } from "./src/commands/help";
 
@@ -38,6 +39,10 @@ async function main() {
         break;
       case "reload":
         await handleReload();
+        break;
+      case "update":
+      case "upgrade":
+        await handleUpdate(args.slice(1));
         break;
       case "version":
         await handleVersion();

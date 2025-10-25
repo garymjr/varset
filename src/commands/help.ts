@@ -14,6 +14,7 @@ COMMANDS:
   import SOURCE [TARGET]  Import variables from .env.* file to .envrc (defaults to ./.envrc)
   prune              Remove stale entries from permission list
   reload             Output export statements for current env
+  update             Check for and install the latest version from GitHub
   version            Show varset version
   help               Show this help message
 
@@ -22,6 +23,7 @@ EXAMPLES:
   varset edit
   varset exec . npm start
   varset import .env.local
+  varset update --yes  Auto-install latest version without confirmation
   eval "$(varset reload)"
   eval "$(varset hook bash)" >> ~/.bashrc
   `.trim());
