@@ -1,0 +1,56 @@
+import { handleAllow } from "./src/commands/allow";
+import { handleDeny } from "./src/commands/deny";
+import { handleEdit } from "./src/commands/edit";
+import { handleExec } from "./src/commands/exec";
+import { handleHook } from "./src/commands/hook";
+import { handlePrune } from "./src/commands/prune";
+import { handleReload } from "./src/commands/reload";
+import { handleVersion } from "./src/commands/version";
+import { handleHelp } from "./src/commands/help";
+
+async function main() {
+  const args = Bun.argv.slice(2);
+  const command = args[0]?.toLowerCase();
+
+  try {
+    switch (command) {
+      case "allow":
+        await handleAllow(args.slice(1));
+        break;
+      case "deny":
+        await handleDeny(args.slice(1));
+        break;
+      case "edit":
+        await handleEdit(args.slice(1));
+        break;
+      case "exec":
+        await handleExec(args.slice(1));
+        break;
+      case "hook":
+        await handleHook(args.slice(1));
+        break;
+      case "prune":
+        await handlePrune();
+        break;
+      case "reload":
+        await handleReload();
+        break;
+      case "version":
+        await handleVersion();
+        break;
+      case "help":
+      case undefined:
+        await handleHelp();
+        break;
+      default:
+        console.error(`Unknown command: ${command}`);
+        console.error("Run 'varset help' for usage information");
+        process.exit(1);
+    }
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
+
+main();
