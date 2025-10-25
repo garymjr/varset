@@ -46,8 +46,8 @@ esac
 
 GITHUB_REPO="garymjr/varset"
 GITHUB_API_URL="https://api.github.com/repos/${GITHUB_REPO}/releases/latest"
-INSTALL_PATH="/usr/local/bin/varset"
-FALLBACK_INSTALL_PATH="$HOME/.local/bin/varset"
+INSTALL_DIR="$HOME/.local/bin"
+INSTALL_PATH="$INSTALL_DIR/varset"
 
 echo -e "${YELLOW}Installing varset...${NC}"
 echo "Platform: $OS $ARCH"
@@ -87,38 +87,25 @@ fi
 # Make executable
 chmod +x "$TEMP_BINARY"
 
-# Try to install to /usr/local/bin first
-if [ -w "/usr/local/bin" ]; then
-  echo -e "${YELLOW}Installing to $INSTALL_PATH${NC}"
-  cp "$TEMP_BINARY" "$INSTALL_PATH"
-  INSTALLED_PATH="$INSTALL_PATH"
-else
-  # Try with sudo
-  if sudo -n true 2>/dev/null; then
-    echo -e "${YELLOW}Installing to $INSTALL_PATH (with sudo)${NC}"
-    sudo cp "$TEMP_BINARY" "$INSTALL_PATH"
-    INSTALLED_PATH="$INSTALL_PATH"
-  else
-    # Fallback to home directory
-    mkdir -p "$HOME/.local/bin"
-    echo -e "${YELLOW}Installing to $FALLBACK_INSTALL_PATH${NC}"
-    cp "$TEMP_BINARY" "$FALLBACK_INSTALL_PATH"
-    INSTALLED_PATH="$FALLBACK_INSTALL_PATH"
-    
-    # Check if ~/.local/bin is in PATH
-    if ! echo "$PATH" | grep -q "$HOME/.local/bin"; then
-      echo -e "${YELLOW}Note: $HOME/.local/bin is not in your PATH${NC}"
-      echo -e "${YELLOW}Add it to your shell profile with: export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"
-    fi
-  fi
+# Create install directory
+mkdir -p "$INSTALL_DIR"
+
+# Install binary
+echo -e "${YELLOW}Installing to $INSTALL_PATH${NC}"
+cp "$TEMP_BINARY" "$INSTALL_PATH"
+
+# Check if ~/.local/bin is in PATH
+if ! echo "$PATH" | grep -q "$HOME/.local/bin"; then
+  echo -e "${YELLOW}Note: $HOME/.local/bin is not in your PATH${NC}"
+  echo -e "${YELLOW}Add it to your shell profile with: export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"
 fi
 
 # Verify installation
 echo -e "${YELLOW}Verifying installation...${NC}"
-if command -v varset &> /dev/null; then
-  VERSION=$($INSTALLED_PATH version 2>/dev/null || echo "unknown")
+if "$INSTALL_PATH" version &> /dev/null; then
+  VERSION=$("$INSTALL_PATH" version 2>/dev/null || echo "unknown")
   echo -e "${GREEN}Successfully installed varset!${NC}"
-  echo "Location: $INSTALLED_PATH"
+  echo "Location: $INSTALL_PATH"
   echo "Version: $VERSION"
   echo ""
   echo -e "${YELLOW}Get started:${NC}"
@@ -126,6 +113,6 @@ if command -v varset &> /dev/null; then
   echo "  varset version   - Show version information"
 else
   echo -e "${RED}Error: Installation verification failed${NC}"
-  echo -e "${YELLOW}varset not found in PATH. You may need to restart your terminal or add $HOME/.local/bin to PATH${NC}"
+  echo -e "${YELLOW}varset not found or not working properly${NC}"
   exit 1
 fi
