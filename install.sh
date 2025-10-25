@@ -62,8 +62,14 @@ if [ -z "$LATEST_RELEASE" ]; then
   exit 1
 fi
 
-# Extract download URL
-DOWNLOAD_URL=$(echo "$LATEST_RELEASE" | grep -o "\"browser_download_url\": \"[^\"]*${BINARY_NAME}[^\"]*\"" | head -1 | cut -d'"' -f4)
+# Extract download URL safely using jq if available, fallback to grep
+if command -v jq &> /dev/null; then
+  DOWNLOAD_URL=$(echo "$LATEST_RELEASE" | jq -r ".assets[] | select(.name | contains(\"$BINARY_NAME\")) | .browser_download_url" | head -1)
+else
+  # Safer fallback: escape special regex characters and use simpler pattern
+  ESCAPED_BINARY_NAME=$(printf '%s\n' "$BINARY_NAME" | sed 's/[[\.*^$/]/\\&/g')
+  DOWNLOAD_URL=$(echo "$LATEST_RELEASE" | sed -n "s/.*\"browser_download_url\": \"\([^\"]*$ESCAPED_BINARY_NAME[^\"]*\)\".*/\1/p" | head -1)
+fi
 
 if [ -z "$DOWNLOAD_URL" ]; then
   echo -e "${RED}Error: Could not find binary for your platform ($BINARY_NAME) in the latest release${NC}"

@@ -2,6 +2,8 @@ import * as fs from "fs";
 import * as path from "path";
 import { realpath } from "fs/promises";
 
+const MAX_FILE_SIZE = 1024 * 1024; // 1 MB
+
 interface PermissionEntry {
   allowed: boolean;
   timestamp: number;
@@ -73,9 +75,21 @@ async function validatePathSafety(filePath: string): Promise<void> {
 export async function loadPermissions(): Promise<Permissions> {
   await ensureConfigDir();
   try {
-    const content = await Bun.file(PERMISSIONS_FILE).text();
+    const file = Bun.file(PERMISSIONS_FILE);
+    const fileStats = await file.stat();
+    if (fileStats.size > MAX_FILE_SIZE) {
+      throw new Error(`Permissions file too large (${fileStats.size} bytes, max ${MAX_FILE_SIZE} bytes)`);
+    }
+    const content = await file.text();
     return JSON.parse(content);
-  } catch {
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      console.warn("Warning: Corrupted permissions file, starting fresh");
+      return {};
+    }
+    if (error instanceof Error && error.message.includes("too large")) {
+      throw error;
+    }
     return {};
   }
 }

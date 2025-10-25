@@ -2,6 +2,8 @@ import * as crypto from "crypto";
 
 const GITHUB_REPO = "garymjr/varset";
 const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
 
 interface ReleaseInfo {
   tag_name: string;
@@ -64,20 +66,46 @@ async function getInstallPath(): Promise<string> {
   return `${process.env.HOME}/.local/bin/varset`;
 }
 
-async function fetchLatestRelease(): Promise<ReleaseInfo> {
-  const response = await fetch(GITHUB_API_URL);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch latest release: ${response.statusText}`);
+async function fetchWithRetry(url: string, maxRetries: number = MAX_RETRIES): Promise<Response> {
+  for (let i = 0; i < maxRetries; i++) {
+    const response = await fetch(url);
+    
+    // Check for rate limiting
+    if (response.status === 403) {
+      const remaining = response.headers.get("X-RateLimit-Remaining");
+      if (remaining === "0") {
+        const resetTime = response.headers.get("X-RateLimit-Reset");
+        const resetDate = resetTime ? new Date(parseInt(resetTime) * 1000) : "unknown";
+        throw new Error(`GitHub API rate limit exceeded. Resets at ${resetDate}. Try again later.`);
+      }
+    }
+
+    // Retry on server errors (5xx) and temporary failures (429)
+    if (response.status === 429 || (response.status >= 500 && response.status < 600)) {
+      if (i < maxRetries - 1) {
+        const delay = RETRY_DELAY_MS * Math.pow(2, i);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+    }
+
+    if (response.ok) {
+      return response;
+    }
+
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
   }
+
+  throw new Error("Max retries exceeded while fetching from GitHub API");
+}
+
+async function fetchLatestRelease(): Promise<ReleaseInfo> {
+  const response = await fetchWithRetry(GITHUB_API_URL);
   return response.json();
 }
 
 async function downloadBinary(downloadUrl: string, targetPath: string): Promise<string> {
-  const response = await fetch(downloadUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to download binary: ${response.statusText}`);
-  }
-
+  const response = await fetchWithRetry(downloadUrl);
   const buffer = await response.arrayBuffer();
   await Bun.write(targetPath, buffer);
   
@@ -93,11 +121,7 @@ async function fetchChecksums(releaseInfo: ReleaseInfo): Promise<Map<string, str
     throw new Error("No checksums.txt found in release assets");
   }
 
-  const response = await fetch(checksumAsset.browser_download_url);
-  if (!response.ok) {
-    throw new Error(`Failed to download checksums: ${response.statusText}`);
-  }
-
+  const response = await fetchWithRetry(checksumAsset.browser_download_url);
   const checksumText = await response.text();
   const checksums = new Map<string, string>();
   

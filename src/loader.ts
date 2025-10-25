@@ -6,6 +6,17 @@ export interface EnvVars {
   [key: string]: string;
 }
 
+const MAX_FILE_SIZE = 1024 * 1024; // 1 MB
+
+async function safeReadFile(filePath: string): Promise<string> {
+  const file = Bun.file(filePath);
+  const fileStats = await file.stat();
+  if (fileStats.size > MAX_FILE_SIZE) {
+    throw new Error(`File too large: ${filePath} (${fileStats.size} bytes, max ${MAX_FILE_SIZE} bytes)`);
+  }
+  return file.text();
+}
+
 // Environment variables that could be abused for code injection/hijacking
 const DANGEROUS_ENV_VARS = new Set([
   "LD_PRELOAD",
@@ -81,7 +92,7 @@ async function loadEnvFromDir(dirPath: string): Promise<EnvVars> {
       return {};
     }
 
-    const content = await Bun.file(envrcPath).text();
+    const content = await safeReadFile(envrcPath);
     return parseEnvFile(content, envrcPath);
   } catch {
     return {};
@@ -151,7 +162,7 @@ export async function loadEnvFromDirDown(startDir: string): Promise<EnvVars> {
     if (exists) {
       const allowed = await isAllowed(envrcPath);
       if (allowed) {
-        const content = await Bun.file(envrcPath).text();
+        const content = await safeReadFile(envrcPath);
         const dirVars = parseEnvFile(content, envrcPath);
         Object.assign(vars, dirVars);
       }
