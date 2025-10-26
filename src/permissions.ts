@@ -27,11 +27,11 @@ export async function ensureConfigDir(): Promise<void> {
   try {
     await Bun.file(CONFIG_DIR).exists().then((exists) => {
       if (!exists) {
-        fs.mkdirSync(CONFIG_DIR, { recursive: true });
+        fs.mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
       }
     });
   } catch {
-    fs.mkdirSync(CONFIG_DIR, { recursive: true });
+    fs.mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
   }
 }
 
@@ -119,6 +119,8 @@ export async function loadPermissions(): Promise<Permissions> {
 export async function savePermissions(perms: Permissions): Promise<void> {
   await ensureConfigDir();
   await Bun.write(PERMISSIONS_FILE, JSON.stringify(perms, null, 2));
+  // Ensure restrictive permissions on the permissions file
+  fs.chmodSync(PERMISSIONS_FILE, 0o600);
 }
 
 async function normalizePath(filePath: string): Promise<string> {

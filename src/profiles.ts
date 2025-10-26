@@ -15,10 +15,12 @@ async function ensureConfigDir(): Promise<void> {
   try {
     const exists = await Bun.file(CONFIG_DIR).exists();
     if (!exists) {
-      await Bun.write(CONFIG_DIR, "");
+      const fs = await import("fs");
+      fs.mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
     }
-  } catch {
-    // Directory creation is handled by ensureConfigDir in permissions.ts
+  } catch (error) {
+    const fs = await import("fs");
+    fs.mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
   }
 }
 
@@ -43,6 +45,9 @@ async function loadProfiles(): Promise<ProfileState> {
 async function saveProfiles(state: ProfileState): Promise<void> {
   await ensureConfigDir();
   await Bun.write(PROFILES_FILE, JSON.stringify(state, null, 2));
+  // Ensure restrictive permissions on profiles file
+  const fs = await import("fs");
+  fs.chmodSync(PROFILES_FILE, 0o600);
 }
 
 async function getNormalizedPath(dirPath: string): Promise<string> {
@@ -64,8 +69,11 @@ export async function setActiveProfile(dirPath: string, profile: string): Promis
     throw new ValidationError("Profile name must be a non-empty string");
   }
 
-  if (!/^[a-zA-Z0-9_-]+$/.test(profile)) {
-    throw new ValidationError("Profile name can only contain alphanumeric characters, underscores, and hyphens");
+  // Disallow leading hyphens (could be confused with command flags) and other problematic patterns
+  if (!/^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(profile) || profile.length > 64) {
+    throw new ValidationError(
+      "Profile name must start with letter or underscore, contain only alphanumeric characters, underscores, hyphens, and be max 64 characters"
+    );
   }
 
   const normalizedPath = await getNormalizedPath(dirPath);

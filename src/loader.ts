@@ -27,12 +27,19 @@ export async function safeReadFile(filePath: string): Promise<string> {
 
 function interpolateVariables(vars: EnvVars): EnvVars {
   const resolved: EnvVars = {};
-  const visitingStack = new Map<string, Set<string>>();
+  const MAX_INTERPOLATION_DEPTH = 10;
 
-  function resolve(key: string, visiting: Set<string>): string {
+  function resolve(key: string, visiting: Set<string>, depth: number = 0): string {
     const value = vars[key];
     if (!value) {
       return "";
+    }
+
+    // Detect max depth to prevent stack overflow
+    if (depth > MAX_INTERPOLATION_DEPTH) {
+      throw new ValidationError(
+        `Variable interpolation depth exceeded for ${key} (max ${MAX_INTERPOLATION_DEPTH} levels)`
+      );
     }
 
     // Detect circular references
@@ -50,12 +57,12 @@ function interpolateVariables(vars: EnvVars): EnvVars {
         // Leave undefined variables as-is
         return match;
       }
-      return resolve(varName, newVisiting);
+      return resolve(varName, newVisiting, depth + 1);
     });
   }
 
   for (const key of Object.keys(vars)) {
-    resolved[key] = resolve(key, new Set());
+    resolved[key] = resolve(key, new Set(), 0);
   }
 
   return resolved;

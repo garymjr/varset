@@ -26,17 +26,46 @@ export const SAFE_BASE_PATHS = [
 
 // Variables that should never be loaded from .envrc (security risk)
 export const DANGEROUS_ENV_VARS = new Set([
+  // Loader preload/injection
   "LD_PRELOAD",
   "LD_LIBRARY_PATH",
   "LD_AUDIT",
+  "LD_BIND_NOW",
   "DYLD_INSERT_LIBRARIES",
   "DYLD_LIBRARY_PATH",
   "DYLD_PRELOAD",
+  "DYLD_FRAMEWORK_PATH",
+  "DYLD_FALLBACK_LIBRARY_PATH",
+  // Sanitizer preloads
   "ASAN_PRELOAD",
   "UBSAN_PRELOAD",
+  "TSAN_PRELOAD",
+  "LSAN_PRELOAD",
+  // Path and execution
   "PATH",
   "PYTHONPATH",
   "RUBYLIB",
+  "PERL5LIB",
+  "NODE_PATH",
+  "GEM_PATH",
+  "JAVA_TOOL_OPTIONS",
+  // Shell and environment
+  "SHELL",
+  "ZDOTDIR",
+  "ENV",
+  "BASH_ENV",
+  "ZSH_ENV",
+  "POSIXLY_CORRECT",
+  // Terminal and display
+  "TERMINFO",
+  "TERMINFO_DIRS",
+  "LD_DEBUG",
+  // Package managers
+  "CONDA_PREFIX",
+  "VIRTUAL_ENV",
+  "GOPATH",
+  "RUSTUP_HOME",
+  "CARGO_HOME",
 ]);
 
 // Exit codes
