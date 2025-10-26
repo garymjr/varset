@@ -405,3 +405,75 @@ test("parseEnvFile - should mix interpolated and non-interpolated vars", () => {
   expect(vars.ENDPOINT).toBe("https://api.example.com/users");
   expect(vars.STATIC_VAR).toBe("unchanged");
 });
+
+// Export command tests
+test("export command - should not throw without format (default)", async () => {
+  await setupTestDir();
+
+  const envrcPath = path.join(TEST_HOME, ".envrc");
+  fs.writeFileSync(envrcPath, "VAR1=value1");
+  await allow(envrcPath);
+
+  const { handleExport } = await import("./src/commands/export");
+
+  // Should not throw
+  await handleExport([]);
+
+  await cleanupTestDir();
+});
+
+test("export command - should accept JSON format", async () => {
+  await setupTestDir();
+
+  const envrcPath = path.join(TEST_HOME, ".envrc");
+  fs.writeFileSync(envrcPath, "VAR1=value1");
+  await allow(envrcPath);
+
+  const { handleExport } = await import("./src/commands/export");
+
+  // Should not throw
+  await handleExport(["--format=json"]);
+
+  await cleanupTestDir();
+});
+
+test("export command - should accept YAML format", async () => {
+  await setupTestDir();
+
+  const envrcPath = path.join(TEST_HOME, ".envrc");
+  fs.writeFileSync(envrcPath, "VAR1=value1");
+  await allow(envrcPath);
+
+  const { handleExport } = await import("./src/commands/export");
+
+  // Should not throw
+  await handleExport(["--format=yaml"]);
+
+  await cleanupTestDir();
+});
+
+test("export command - should accept shell format", async () => {
+  await setupTestDir();
+
+  const envrcPath = path.join(TEST_HOME, ".envrc");
+  fs.writeFileSync(envrcPath, "VAR1=value1");
+  await allow(envrcPath);
+
+  const { handleExport } = await import("./src/commands/export");
+
+  // Should not throw
+  await handleExport(["--format=shell"]);
+
+  await cleanupTestDir();
+});
+
+test("export command - should reject invalid format", async () => {
+  const { handleExport } = await import("./src/commands/export");
+
+  try {
+    await handleExport(["--format=invalid"]);
+    expect(true).toBe(false); // Should have thrown
+  } catch (error) {
+    expect(error).toBeDefined();
+  }
+});

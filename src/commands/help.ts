@@ -13,6 +13,7 @@ COMMANDS:
   list, status       Show active .envrc files and their status
   edit [PATH]        Open .envrc in $EDITOR (defaults to ./.envrc)
   exec DIR COMMAND   Execute command after loading .envrc from DIR
+  export [FORMAT]    Export current environment to specified format
   hook SHELL         Output shell hook (bash, zsh, or fish)
   import SOURCE [TARGET]  Import variables from .env.* file to .envrc (defaults to ./.envrc)
   prune              Remove stale entries from permission list
@@ -21,6 +22,12 @@ COMMANDS:
   version            Show varset version
   help               Show this help message
 
+EXPORT FORMATS:
+  --format=dotenv    Standard .env format (default)
+  --format=json      JSON object format
+  --format=yaml      YAML format
+  --format=shell     Shell script format with export statements
+
 EXAMPLES:
   varset list        Show all tracked .envrc files and their status
   varset allow /path/to/.envrc
@@ -28,6 +35,10 @@ EXAMPLES:
   varset diff --preview /path/to/project
   varset edit
   varset exec . npm start
+  varset export > .env
+  varset export --format=json > env.json
+  varset export --format=yaml > env.yaml
+  varset export --format=shell > load-env.sh
   varset import .env.local
   varset update --yes  Auto-install latest version without confirmation
   eval "$(varset reload)"
