@@ -1,6 +1,7 @@
 import { generateBashCompletion } from "../completions/bash";
 import { generateZshCompletion } from "../completions/zsh";
 import { ValidationError } from "../errors";
+import { getVarsetPath } from "../utils/path";
 
 export async function handleCompletion(args: string[]): Promise<void> {
   const shell = args[0];
@@ -9,7 +10,7 @@ export async function handleCompletion(args: string[]): Promise<void> {
     throw new ValidationError("Usage: varset completion <bash|zsh|fish>");
   }
 
-  const varsetPath = process.argv[1];
+  const varsetPath = await getVarsetPath();
 
   let completion: string;
   switch (shell.toLowerCase()) {

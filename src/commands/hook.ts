@@ -2,6 +2,7 @@ import { generateBashHook } from "../hooks/bash";
 import { generateZshHook } from "../hooks/zsh";
 import { generateFishHook } from "../hooks/fish";
 import { ValidationError } from "../errors";
+import { getVarsetPath } from "../utils/path";
 
 export async function handleHook(args: string[]): Promise<void> {
   const shell = args[0];
@@ -11,7 +12,7 @@ export async function handleHook(args: string[]): Promise<void> {
   }
 
   // Get the path to the varset executable
-  const varsetPath = process.argv[1];
+  const varsetPath = await getVarsetPath();
 
   let hook: string;
   switch (shell.toLowerCase()) {
