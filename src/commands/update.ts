@@ -1,6 +1,7 @@
 import * as crypto from "crypto";
 import * as path from "path";
 import * as fs from "fs";
+import * as os from "os";
 import {
   GITHUB_REPO,
   GITHUB_API_URL,
@@ -289,7 +290,7 @@ export async function handleUpdate(args: string[]): Promise<void> {
   }
 
   console.log(`Downloading ${binaryName}...`);
-  const tempDir = await Bun.tempdir();
+  const tempDir = os.tmpdir();
   const tempBinary = `${tempDir}/varset-new`;
 
   const downloadedHash = await downloadBinary(asset.browser_download_url, tempBinary);
