@@ -12,6 +12,7 @@ import { handleReload } from "./src/commands/reload";
 import { handleUpdate } from "./src/commands/update";
 import { handleVersion } from "./src/commands/version";
 import { handleHelp } from "./src/commands/help";
+import { handleCompletion } from "./src/commands/completion";
 import { AppError, formatError, getExitCode } from "./src/errors";
 import { EXIT_CODE } from "./src/constants";
 
@@ -41,6 +42,9 @@ async function main() {
         break;
       case "hook":
         await handleHook(args.slice(1));
+        break;
+      case "completion":
+        await handleCompletion(args.slice(1));
         break;
       case "import":
         await handleImport(args.slice(1));

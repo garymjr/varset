@@ -15,6 +15,7 @@ COMMANDS:
   exec DIR COMMAND   Execute command after loading .envrc from DIR
   export [FORMAT]    Export current environment to specified format
   hook SHELL         Output shell hook (bash, zsh, or fish)
+  completion SHELL   Output completion script for shell (bash or zsh)
   import SOURCE [TARGET]  Import variables from .env.* file to .envrc (defaults to ./.envrc)
   prune              Remove stale entries from permission list
   reload             Output export statements for current env
@@ -43,5 +44,7 @@ EXAMPLES:
   varset update --yes  Auto-install latest version without confirmation
   eval "$(varset reload)"
   eval "$(varset hook bash)" >> ~/.bashrc
+  eval "$(varset completion bash)" >> ~/.bashrc
+  eval "$(varset completion zsh)" >> ~/.zshrc
   `.trim());
 }
