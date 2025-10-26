@@ -10,7 +10,7 @@ _varset_completions() {
   cword=\$COMP_CWORD
 
   # All available commands
-  local commands="allow deny diff edit exec export hook import list status prune reload update upgrade version help completion"
+  local commands="allow deny diff edit exec export hook import list status use switch prune reload update upgrade version help completion"
 
   # If we're completing the command name
   if [[ \$cword -eq 1 ]]; then
@@ -67,6 +67,14 @@ _varset_completions() {
       # Complete shell types
       if [[ \$cword -eq 2 ]]; then
         COMPREPLY=( \$(compgen -W "bash zsh fish" -- "\$cur") )
+      fi
+      ;;
+    
+    use|switch)
+      # Complete profile names from .envrc.* files
+      if [[ \$cword -eq 2 ]]; then
+        local profiles=\$(find . -maxdepth 1 -name ".envrc.*" 2>/dev/null | sed 's|^\./\.envrc\.||')
+        COMPREPLY=( \$(compgen -W "\$profiles" -- "\$cur") )
       fi
       ;;
     

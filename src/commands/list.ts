@@ -2,6 +2,7 @@ import * as path from "path";
 import * as fs from "fs";
 import { loadPermissions } from "../permissions";
 import { parseEnvFile, safeReadFile } from "../loader";
+import { getAllProfiles } from "../profiles";
 import { HOME_DIR } from "../constants";
 
 interface FileStatus {
@@ -53,6 +54,7 @@ export async function handleList(): Promise<void> {
   }
 
   const fileStatuses: FileStatus[] = [];
+  const profiles = await getAllProfiles();
 
   // Get status for each tracked file
   for (const [filePath, entry] of entries) {
@@ -71,7 +73,10 @@ export async function handleList(): Promise<void> {
     for (const file of active) {
       const varCount = file.variables.length;
       const varText = varCount === 1 ? "variable" : "variables";
-      console.log(`  ${file.displayPath} (✓ allowed, ${varCount} ${varText})`);
+      const dir = path.dirname(file.path);
+      const activeProfile = profiles[dir];
+      const profileText = activeProfile ? ` [${activeProfile}]` : "";
+      console.log(`  ${file.displayPath} (✓ allowed, ${varCount} ${varText})${profileText}`);
       if (file.variables.length > 0) {
         for (const varName of file.variables) {
           console.log(`    - ${varName}`);

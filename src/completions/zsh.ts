@@ -14,6 +14,8 @@ _varset() {
     'import:Import variables from .env.* file to .envrc'
     'list:Show active .envrc files and their status'
     'status:Show active .envrc files and their status'
+    'use:Switch to environment profile (dev, prod, staging, etc.)'
+    'switch:Alias for use command'
     'prune:Remove stale entries from permission list'
     'reload:Output export statements for current env'
     'update:Check for and install the latest version from GitHub'
@@ -61,6 +63,12 @@ _varset() {
           ;;
         hook|completion)
           _arguments '1:shell:(bash zsh fish)'
+          ;;
+        use|switch)
+          if [[ \$#line -eq 2 ]]; then
+            local profiles=(\${(f)"$(find . -maxdepth 1 -name '.envrc.*' 2>/dev/null | sed 's|^.*/\.envrc\.||')"})
+            _arguments "1:profile:($profiles)"
+          fi
           ;;
         import)
           if [[ \$#line -eq 2 ]]; then

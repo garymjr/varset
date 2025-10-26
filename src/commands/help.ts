@@ -11,6 +11,8 @@ COMMANDS:
   diff FILE1 FILE2   Compare two .envrc files
   diff --preview [DIR]  Preview variable changes when entering DIR (defaults to .)
   list, status       Show active .envrc files and their status
+  use [PROFILE]      Switch to environment profile (e.g., dev, prod, staging)
+  switch [PROFILE]   Alias for 'use'
   edit [PATH]        Open .envrc in $EDITOR (defaults to ./.envrc)
   exec DIR COMMAND   Execute command after loading .envrc from DIR
   export [FORMAT]    Export current environment to specified format
@@ -34,6 +36,9 @@ EXAMPLES:
   varset allow /path/to/.envrc
   varset diff .envrc .envrc.prod
   varset diff --preview /path/to/project
+  varset use dev     Switch to 'dev' environment profile
+  varset switch prod Switch to 'prod' environment profile
+  varset use         Show current active profile
   varset edit
   varset exec . npm start
   varset export > .env

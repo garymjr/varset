@@ -1,6 +1,7 @@
 import * as path from "path";
 import { realpath, stat } from "fs/promises";
 import { isAllowed } from "./permissions";
+import { getActiveProfile } from "./profiles";
 import {
   MAX_FILE_SIZE,
   DANGEROUS_ENV_VARS,
@@ -108,24 +109,43 @@ export function parseEnvFile(content: string, filePath?: string): EnvVars {
 }
 
 async function loadEnvFromDir(dirPath: string): Promise<EnvVars> {
+  const vars: EnvVars = {};
   const envrcPath = path.join(dirPath, ENVRC_FILENAME);
   
   try {
     const exists = await Bun.file(envrcPath).exists();
-    if (!exists) {
-      return {};
+    if (exists) {
+      const allowed = await isAllowed(envrcPath);
+      if (allowed) {
+        const content = await safeReadFile(envrcPath);
+        Object.assign(vars, parseEnvFile(content, envrcPath));
+      }
     }
-
-    const allowed = await isAllowed(envrcPath);
-    if (!allowed) {
-      return {};
-    }
-
-    const content = await safeReadFile(envrcPath);
-    return parseEnvFile(content, envrcPath);
   } catch {
-    return {};
+    // Continue on error
   }
+
+  // Load active profile if set
+  try {
+    const activeProfile = await getActiveProfile(dirPath);
+    if (activeProfile) {
+      const profilePath = path.join(dirPath, `.envrc.${activeProfile}`);
+      const profileExists = await Bun.file(profilePath).exists();
+      
+      if (profileExists) {
+        const allowed = await isAllowed(profilePath);
+        if (allowed) {
+          const content = await safeReadFile(profilePath);
+          const profileVars = parseEnvFile(content, profilePath);
+          Object.assign(vars, profileVars);
+        }
+      }
+    }
+  } catch {
+    // Continue on error if profile loading fails
+  }
+
+  return vars;
 }
 
 export async function loadEnvRecursive(startDir: string): Promise<EnvVars> {
@@ -198,6 +218,26 @@ export async function loadEnvFromDirDown(startDir: string): Promise<EnvVars> {
     }
   } catch {
     // Continue on error
+  }
+
+  // Load active profile if set
+  try {
+    const activeProfile = await getActiveProfile(startDir);
+    if (activeProfile) {
+      const profilePath = path.join(startDir, `.envrc.${activeProfile}`);
+      const profileExists = await Bun.file(profilePath).exists();
+      
+      if (profileExists) {
+        const allowed = await isAllowed(profilePath);
+        if (allowed) {
+          const content = await safeReadFile(profilePath);
+          const profileVars = parseEnvFile(content, profilePath);
+          Object.assign(vars, profileVars);
+        }
+      }
+    }
+  } catch {
+    // Continue on error if profile loading fails
   }
 
   return vars;
