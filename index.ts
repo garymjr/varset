@@ -1,5 +1,6 @@
 import { handleAllow } from "./src/commands/allow";
 import { handleDeny } from "./src/commands/deny";
+import { handleDiff } from "./src/commands/diff";
 import { handleEdit } from "./src/commands/edit";
 import { handleExec } from "./src/commands/exec";
 import { handleHook } from "./src/commands/hook";
@@ -24,6 +25,9 @@ async function main() {
         break;
       case "deny":
         await handleDeny(args.slice(1));
+        break;
+      case "diff":
+        await handleDiff(args.slice(1));
         break;
       case "edit":
         await handleEdit(args.slice(1));
