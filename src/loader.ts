@@ -24,6 +24,42 @@ export async function safeReadFile(filePath: string): Promise<string> {
   return file.text();
 }
 
+function interpolateVariables(vars: EnvVars): EnvVars {
+  const resolved: EnvVars = {};
+  const visitingStack = new Map<string, Set<string>>();
+
+  function resolve(key: string, visiting: Set<string>): string {
+    const value = vars[key];
+    if (!value) {
+      return "";
+    }
+
+    // Detect circular references
+    if (visiting.has(key)) {
+      const chain = Array.from(visiting).join(" -> ") + " -> " + key;
+      throw new ValidationError(`Circular variable reference detected: ${chain}`);
+    }
+
+    const newVisiting = new Set(visiting);
+    newVisiting.add(key);
+
+    // Replace all ${VAR} references with resolved values
+    return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, varName) => {
+      if (!vars.hasOwnProperty(varName)) {
+        // Leave undefined variables as-is
+        return match;
+      }
+      return resolve(varName, newVisiting);
+    });
+  }
+
+  for (const key of Object.keys(vars)) {
+    resolved[key] = resolve(key, new Set());
+  }
+
+  return resolved;
+}
+
 export function parseEnvFile(content: string, filePath?: string): EnvVars {
   const vars: EnvVars = {};
   const lines = content.split("\n");
@@ -67,7 +103,8 @@ export function parseEnvFile(content: string, filePath?: string): EnvVars {
     console.warn(`⚠ Warning: .envrc at ${filePath || "unknown"} contains restricted variables and they were ignored: ${dangerous.join(", ")}`);
   }
 
-  return vars;
+  // Apply variable interpolation
+  return interpolateVariables(vars);
 }
 
 async function loadEnvFromDir(dirPath: string): Promise<EnvVars> {

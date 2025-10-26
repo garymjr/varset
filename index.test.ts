@@ -323,3 +323,85 @@ test("list command - should display tracked .envrc files", async () => {
 
   await cleanupTestDir();
 });
+
+// Variable interpolation tests
+test("parseEnvFile - should interpolate simple ${VAR} references", () => {
+  const content = "BASE_URL=https://api.example.com\nAPI_ENDPOINT=${BASE_URL}/v1";
+
+  const vars = parseEnvFile(content);
+
+  expect(vars.BASE_URL).toBe("https://api.example.com");
+  expect(vars.API_ENDPOINT).toBe("https://api.example.com/v1");
+});
+
+test("parseEnvFile - should handle multiple references in one value", () => {
+  const content = "PROTOCOL=https\nHOST=api.example.com\nPORT=443\nURL=${PROTOCOL}://${HOST}:${PORT}";
+
+  const vars = parseEnvFile(content);
+
+  expect(vars.URL).toBe("https://api.example.com:443");
+});
+
+test("parseEnvFile - should interpolate in quoted values", () => {
+  const content = 'BASE=/home/user\nDATA_DIR="${BASE}/data"';
+
+  const vars = parseEnvFile(content);
+
+  expect(vars.DATA_DIR).toBe("/home/user/data");
+});
+
+test("parseEnvFile - should leave undefined variables as-is", () => {
+  const content = "API_ENDPOINT=https://api.com${UNDEFINED_VAR}/v1";
+
+  const vars = parseEnvFile(content);
+
+  expect(vars.API_ENDPOINT).toBe("https://api.com${UNDEFINED_VAR}/v1");
+});
+
+test("parseEnvFile - should work with variables defined out of order", () => {
+  const content = "FULL_PATH=${DIR}/file.txt\nDIR=/home/user";
+
+  const vars = parseEnvFile(content);
+
+  expect(vars.DIR).toBe("/home/user");
+  expect(vars.FULL_PATH).toBe("/home/user/file.txt");
+});
+
+test("parseEnvFile - should detect circular references", () => {
+  const content = "VAR_A=${VAR_B}\nVAR_B=${VAR_A}";
+
+  expect(() => parseEnvFile(content)).toThrow(ValidationError);
+});
+
+test("parseEnvFile - should detect indirect circular references", () => {
+  const content = "A=${B}\nB=${C}\nC=${A}";
+
+  expect(() => parseEnvFile(content)).toThrow(ValidationError);
+});
+
+test("parseEnvFile - should handle self-reference as circular", () => {
+  const content = "VAR=${VAR}";
+
+  expect(() => parseEnvFile(content)).toThrow(ValidationError);
+});
+
+test("parseEnvFile - should handle complex interpolation scenarios", () => {
+  const content = "WORKSPACE=/projects/myapp\nSCRIPTS_DIR=${WORKSPACE}/scripts\nBIN_PATH=${SCRIPTS_DIR}/bin\nRUN_SCRIPT=${BIN_PATH}/run.sh";
+
+  const vars = parseEnvFile(content);
+
+  expect(vars.WORKSPACE).toBe("/projects/myapp");
+  expect(vars.SCRIPTS_DIR).toBe("/projects/myapp/scripts");
+  expect(vars.BIN_PATH).toBe("/projects/myapp/scripts/bin");
+  expect(vars.RUN_SCRIPT).toBe("/projects/myapp/scripts/bin/run.sh");
+});
+
+test("parseEnvFile - should mix interpolated and non-interpolated vars", () => {
+  const content = "API_KEY=secret123\nBASE_URL=https://api.example.com\nENDPOINT=${BASE_URL}/users\nSTATIC_VAR=unchanged";
+
+  const vars = parseEnvFile(content);
+
+  expect(vars.API_KEY).toBe("secret123");
+  expect(vars.ENDPOINT).toBe("https://api.example.com/users");
+  expect(vars.STATIC_VAR).toBe("unchanged");
+});
